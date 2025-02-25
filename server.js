@@ -49,42 +49,53 @@ const cleanAndFormatPost = (originalMessage) => {
 };
 
 // Function to fetch last message from Telegram
+// Function to fetch last message from Telegram
 async function fetchLastMessage(groupName, topicId) {
-    console.log("Connecting to Telegram...");
-    await client.start({
-        phoneNumber: async () => "+306980153019",
-        password: async () => "zapre",
-        phoneCode: async () => {
-            console.log("Check your Telegram app for the login code.");
-            const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout,
+    try {
+        // Ensure the client is connected
+        if (!client.connected) {
+            await client.start({
+                phoneNumber: async () =>
+                    await new Promise((resolve) =>
+                        readline.question("Please enter your phone number: ", resolve)
+                    ),
+                password: async () =>
+                    await new Promise((resolve) =>
+                        readline.question("Please enter your password: ", resolve)
+                    ),
+                phoneCode: async () =>
+                    await new Promise((resolve) =>
+                        readline.question("Please enter the code you received: ", resolve)
+                    ),
+                onError: (err) => console.log(err),
             });
-            const code = await new Promise((resolve) =>
-                rl.question("Enter the login code you received: ", resolve)
-            );
-            rl.close();
-            return code.trim();
-        },
-        onError: (err) => console.error("Authentication error:", err),
-    });
+            // Save session after successful login
+            fs.writeFileSync(sessionFile, client.session.save());
+        }
 
-    console.log("Connected to Telegram!");
+        // Resolve the group entity by its name or username
+        const entity = await client.getEntity(groupName);
 
-    const chatEntity = await client.getEntity(groupName);
-    const inputPeer = await client.getInputEntity(chatEntity);
+        // Fetch the latest messages (limit to 1 for the last message)
+        const messages = await client.getMessages(entity, {
+            limit: 1, // Get only the most recent message
+            thread: topicId ? Number(topicId) : undefined, // Filter by topic/thread if provided
+        });
 
-    const messages = await client.getMessages(inputPeer, { limit: 2 });
+        if (messages.length === 0) {
+            return "No messages found in the group/topic.";
+        }
 
-    if (messages.length > 0) {
         const lastMessage = messages[0];
-        const formattedText = cleanAndFormatPost(lastMessage.message);
-        return formattedText;
-    } else {
-        return "No messages found in the group.";
+        const messageText = lastMessage.message || "Message content unavailable";
+
+        // Clean and format the message
+        return cleanAndFormatPost(messageText);
+    } catch (error) {
+        console.error("Error fetching message:", error);
+        throw error; // Let the caller handle the error
     }
 }
-
 // Route to handle frontend requests
 app.post("/fetch-message", async (req, res) => {
     const { groupName, topicId } = req.body;
