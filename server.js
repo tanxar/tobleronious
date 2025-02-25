@@ -1,7 +1,6 @@
 const express = require("express");
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
-const { Api } = require("telegram/tl");
 const fs = require("fs");
 const readline = require("readline");
 
@@ -9,8 +8,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // API credentials
-const apiId = 25842022;
-const apiHash = "64477ef07db57ab4406c15106de4acfb";
+const apiId = 25842022; // Your API ID
+const apiHash = "64477ef07db57ab4406c15106de4acfb"; // Your API Hash
 const sessionFile = "sessionString.txt";
 
 // Initialize Telegram client session
@@ -52,25 +51,31 @@ const cleanAndFormatPost = (originalMessage) => {
 // Function to fetch last message from Telegram
 async function fetchLastMessage(groupName, topicId) {
     try {
+        // Ensure the client is connected
         if (!client.connected) {
             await client.start({
-                phoneNumber: async () =>
-                    await new Promise((resolve) =>
-                        readline.question("Please enter your phone number: ", resolve)
-                    ),
-                password: async () =>
-                    await new Promise((resolve) =>
-                        readline.question("Please enter your password: ", resolve)
-                    ),
-                phoneCode: async () =>
-                    await new Promise((resolve) =>
-                        readline.question("Please enter the code you received: ", resolve)
-                    ),
-                onError: (err) => console.log(err),
+                phoneNumber: async () => "+306980153019", // Your phone number
+                password: async () => "zapre", // Your password
+                phoneCode: async () => {
+                    console.log("Check your Telegram app for the login code.");
+                    const rl = readline.createInterface({
+                        input: process.stdin,
+                        output: process.stdout,
+                    });
+                    const code = await new Promise((resolve) =>
+                        rl.question("Enter the login code you received: ", resolve)
+                    );
+                    rl.close();
+                    return code.trim();
+                },
+                onError: (err) => console.error("Authentication error:", err),
             });
+            // Save session after successful login
             fs.writeFileSync(sessionFile, client.session.save());
+            console.log("Session saved. You won’t need to authenticate again unless the session file is deleted.");
         }
 
+        // Resolve the group entity by its name or username
         let entity;
         try {
             entity = await client.getEntity(groupName);
@@ -81,9 +86,10 @@ async function fetchLastMessage(groupName, topicId) {
             throw error;
         }
 
+        // Fetch the latest messages
         const messages = await client.getMessages(entity, {
-            limit: 1,
-            thread: topicId ? Number(topicId) : undefined,
+            limit: 1, // Get only the most recent message
+            thread: topicId ? Number(topicId) : undefined, // Filter by topic/thread if provided
         });
 
         if (messages.length === 0) {
@@ -95,7 +101,7 @@ async function fetchLastMessage(groupName, topicId) {
 
         return cleanAndFormatPost(messageText);
     } catch (error) {
-        console.error("Error fetching message:", error);
+        console.error("Error fetching message:", error.message);
         throw error;
     }
 }
@@ -103,6 +109,10 @@ async function fetchLastMessage(groupName, topicId) {
 // Route to handle frontend requests
 app.post("/fetch-message", async (req, res) => {
     const { groupName, topicId } = req.body;
+
+    if (!groupName) {
+        return res.status(400).json({ error: "groupName is required" });
+    }
 
     try {
         const lastMessage = await fetchLastMessage(groupName, topicId);
@@ -114,5 +124,5 @@ app.post("/fetch-message", async (req, res) => {
 
 // Start the server
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server running on http://localhost:${port}`);
 });
