@@ -2,29 +2,40 @@ const express = require("express");
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const fs = require("fs");
-const readline = require("readline");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// API credentials
-const apiId = 25842022; // Your API ID
-const apiHash = "64477ef07db57ab4406c15106de4acfb"; // Your API Hash
+const apiId = 25842022;
+const apiHash = "64477ef07db57ab4406c15106de4acfb";
 const sessionFile = "sessionString.txt";
 
-// Initialize Telegram client session
 let sessionString = "";
 if (fs.existsSync(sessionFile)) {
     sessionString = fs.readFileSync(sessionFile, "utf-8");
+    console.log("Loaded session from", sessionFile);
+} else {
+    console.error(`Session file ${sessionFile} not found. Cannot proceed.`);
+    process.exit(1);
 }
-const session = new StringSession(sessionString);
 
+const session = new StringSession(sessionString);
 const client = new TelegramClient(session, apiId, apiHash, {
     connectionRetries: 5,
 });
 
-app.use(express.static("public"));
-app.use(express.json());
+// Function to list accessible chats
+async function listDialogs() {
+    try {
+        const dialogs = await client.getDialogs();
+        console.log("Accessible chats:");
+        dialogs.forEach((dialog) => {
+            console.log("Chat:", dialog.title, "ID:", dialog.id.toString());
+        });
+    } catch (error) {
+        console.error("Error listing dialogs:", error.message);
+    }
+}
 
 // Function to clean and format the message
 const cleanAndFormatPost = (originalMessage) => {
@@ -51,33 +62,18 @@ const cleanAndFormatPost = (originalMessage) => {
 // Function to fetch last message from Telegram
 async function fetchLastMessage(groupName, topicId) {
     try {
-        // Ensure the client is connected
         if (!client.connected) {
-            await client.start({
-                phoneNumber: async () => "+306980153019", // Your phone number
-                password: async () => "zapre", // Your password
-                phoneCode: async () => {
-                    console.log("Check your Telegram app for the login code.");
-                    const rl = readline.createInterface({
-                        input: process.stdin,
-                        output: process.stdout,
-                    });
-                    const code = await new Promise((resolve) =>
-                        rl.question("Enter the login code you received: ", resolve)
-                    );
-                    rl.close();
-                    return code.trim();
-                },
-                onError: (err) => console.error("Authentication error:", err),
-            });
-            // Save session after successful login
-            fs.writeFileSync(sessionFile, client.session.save());
-            console.log("Session saved. You won’t need to authenticate again unless the session file is deleted.");
+            console.log("Connecting Telegram client...");
+            await client.connect();
+            console.log("Client connected.");
+            await listDialogs();
+        } else {
+            console.log("Client already connected.");
         }
 
-        // Resolve the group entity by its name or username
         let entity;
         try {
+            console.log("Resolving entity for:", groupName);
             entity = await client.getEntity(groupName);
         } catch (error) {
             if (error.errorMessage === "CHANNEL_PRIVATE") {
@@ -86,10 +82,10 @@ async function fetchLastMessage(groupName, topicId) {
             throw error;
         }
 
-        // Fetch the latest messages
+        console.log(`Fetching message from ${groupName} with topic ${topicId || "none"}`);
         const messages = await client.getMessages(entity, {
-            limit: 1, // Get only the most recent message
-            thread: topicId ? Number(topicId) : undefined, // Filter by topic/thread if provided
+            limit: 1,
+            thread: topicId ? Number(topicId) : undefined,
         });
 
         if (messages.length === 0) {
@@ -98,7 +94,7 @@ async function fetchLastMessage(groupName, topicId) {
 
         const lastMessage = messages[0];
         const messageText = lastMessage.message || "Message content unavailable";
-
+        console.log("Fetched message:", messageText); // Log the raw message
         return cleanAndFormatPost(messageText);
     } catch (error) {
         console.error("Error fetching message:", error.message);
@@ -106,23 +102,31 @@ async function fetchLastMessage(groupName, topicId) {
     }
 }
 
-// Route to handle frontend requests
 app.post("/fetch-message", async (req, res) => {
     const { groupName, topicId } = req.body;
+    console.log("Frontend inputs received - groupName:", groupName, "topicId:", topicId); // Log inputs explicitly
 
     if (!groupName) {
+        console.log("Validation failed: groupName is missing");
         return res.status(400).json({ error: "groupName is required" });
     }
 
     try {
         const lastMessage = await fetchLastMessage(groupName, topicId);
+        console.log("Sending response:", lastMessage); // Log the final response
         res.json({ message: lastMessage });
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch message", details: err.message });
     }
 });
 
-// Start the server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+app.listen(port, async () => {
+    console.log(`Server running on port ${port}`);
+    try {
+        await client.connect();
+        console.log("Telegram client initialized at startup.");
+        await listDialogs();
+    } catch (error) {
+        console.error("Failed to initialize Telegram client:", error.message);
+    }
 });
