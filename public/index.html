@@ -3,12 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Input Logger</title>
+    <title>Telegram Group Message Fetcher</title>
 </head>
 <body>
-    <h2>Enter something:</h2>
-    <input type="text" id="userInput" placeholder="Type here...">
-    <button onclick="sendInput()">Send</button>
+    <h2>Fetch the last message from a Telegram Group</h2>
+    <form id="fetchForm">
+        <label for="groupName">Group Name:</label>
+        <input type="text" id="groupName" name="groupName" required><br><br>
+
+        <label for="topicId">Topic ID (optional):</label>
+        <input type="text" id="topicId" name="topicId"><br><br>
+
+        <button type="submit">Fetch Last Message</button>
+    </form>
+
+    <h3>Last Message:</h3>
+    <pre id="messageOutput"></pre>
 
     <script src="script.js"></script>
 </body>
