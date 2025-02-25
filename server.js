@@ -1,6 +1,7 @@
 const express = require("express");
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
+const { Api } = require("telegram/tl");
 const fs = require("fs");
 const readline = require("readline");
 
@@ -8,8 +9,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // API credentials
-const apiId = 25842022; // Αντικατέστησε με το δικό σου API ID
-const apiHash = "64477ef07db57ab4406c15106de4acfb"; // Αντικατέστησε με το δικό σου API Hash
+const apiId = 25842022;
+const apiHash = "64477ef07db57ab4406c15106de4acfb";
 const sessionFile = "sessionString.txt";
 
 // Initialize Telegram client session
@@ -49,10 +50,8 @@ const cleanAndFormatPost = (originalMessage) => {
 };
 
 // Function to fetch last message from Telegram
-// Function to fetch last message from Telegram
 async function fetchLastMessage(groupName, topicId) {
     try {
-        // Ensure the client is connected
         if (!client.connected) {
             await client.start({
                 phoneNumber: async () =>
@@ -69,17 +68,22 @@ async function fetchLastMessage(groupName, topicId) {
                     ),
                 onError: (err) => console.log(err),
             });
-            // Save session after successful login
             fs.writeFileSync(sessionFile, client.session.save());
         }
 
-        // Resolve the group entity by its name or username
-        const entity = await client.getEntity(groupName);
+        let entity;
+        try {
+            entity = await client.getEntity(groupName);
+        } catch (error) {
+            if (error.errorMessage === "CHANNEL_PRIVATE") {
+                throw new Error("The group is private, and this client is not a member.");
+            }
+            throw error;
+        }
 
-        // Fetch the latest messages (limit to 1 for the last message)
         const messages = await client.getMessages(entity, {
-            limit: 1, // Get only the most recent message
-            thread: topicId ? Number(topicId) : undefined, // Filter by topic/thread if provided
+            limit: 1,
+            thread: topicId ? Number(topicId) : undefined,
         });
 
         if (messages.length === 0) {
@@ -89,23 +93,22 @@ async function fetchLastMessage(groupName, topicId) {
         const lastMessage = messages[0];
         const messageText = lastMessage.message || "Message content unavailable";
 
-        // Clean and format the message
         return cleanAndFormatPost(messageText);
     } catch (error) {
         console.error("Error fetching message:", error);
-        throw error; // Let the caller handle the error
+        throw error;
     }
 }
+
 // Route to handle frontend requests
 app.post("/fetch-message", async (req, res) => {
     const { groupName, topicId } = req.body;
 
-    // Fetch the last message from the group
     try {
         const lastMessage = await fetchLastMessage(groupName, topicId);
         res.json({ message: lastMessage });
     } catch (err) {
-        res.status(500).json({ error: "Failed to fetch message", details: err });
+        res.status(500).json({ error: "Failed to fetch message", details: err.message });
     }
 });
 
