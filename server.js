@@ -24,6 +24,9 @@ const client = new TelegramClient(session, apiId, apiHash, {
     connectionRetries: 5,
 });
 
+app.use(express.static("public"));
+app.use(express.json());
+
 // Function to list accessible chats
 async function listDialogs() {
     try {
@@ -103,9 +106,10 @@ async function fetchLastMessage(groupName, topicId) {
     }
 }
 
+// POST endpoint (original)
 app.post("/fetch-message", async (req, res) => {
     const { groupName, topicId } = req.body;
-    console.log("Frontend inputs received - groupName:", groupName, "topicId:", topicId);
+    console.log("POST request - Frontend inputs received - groupName:", groupName, "topicId:", topicId);
 
     if (!groupName) {
         console.log("Validation failed: groupName is missing");
@@ -114,14 +118,33 @@ app.post("/fetch-message", async (req, res) => {
 
     try {
         const lastMessage = await fetchLastMessage(groupName, topicId);
-        console.log("Sending response:", lastMessage);
+        console.log("POST response:", lastMessage);
         res.json({ message: lastMessage });
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch message", details: err.message });
     }
 });
 
-// Initialize client on startup with retry logic
+// GET endpoint (new, for testing)
+app.get("/fetch-message", async (req, res) => {
+    const { groupName, topicId } = req.query; // Use query params for GET
+    console.log("GET request - Frontend inputs received - groupName:", groupName, "topicId:", topicId);
+
+    if (!groupName) {
+        console.log("Validation failed: groupName is missing");
+        return res.status(400).json({ error: "groupName is required" });
+    }
+
+    try {
+        const lastMessage = await fetchLastMessage(groupName, topicId);
+        console.log("GET response:", lastMessage);
+        res.json({ message: lastMessage });
+    } catch (err) {
+        res.status(500).json({ error: "Failed to fetch message", details: err.message });
+    }
+});
+
+// Initialize client on startup
 async function initializeClient() {
     try {
         console.log("Initializing Telegram client...");
@@ -130,11 +153,11 @@ async function initializeClient() {
         await listDialogs();
     } catch (error) {
         console.error("Failed to initialize Telegram client:", error.message);
-        process.exit(1); // Exit if initialization fails
+        process.exit(1);
     }
 }
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
-    initializeClient(); // Call initialization
+    initializeClient();
 });
